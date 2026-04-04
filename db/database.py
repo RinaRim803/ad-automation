@@ -1,9 +1,22 @@
+"""
+database.py
+ 
+Loads sample users and default security groups into the SQLite database.
+Run once after init_db() to populate the simulation environment.
+ 
+Real-world equivalent:
+    Importing users from an HR system (e.g. Workday, BambooHR) into Azure AD
+    and pre-creating security groups that map to departments and access levels.
+"""
 import sqlite3
+import sys
 import os
-from datetime import datetime
 
-DB_PATH = os.path.join(os.path.dirname(__file__), "ad_simulation.db")
+sys.path.append(os.path.join(os.path.dirname(__file__), ".."))
 
+from config import cfg, ROOT_DIR
+ 
+DB_PATH = ROOT_DIR / cfg["database"]["path"]
 
 def get_connection():
     """Return a SQLite connection with foreign key support enabled."""
