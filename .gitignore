@@ -1,0 +1,13 @@
+# Python cache
+__pycache__/
+*.pyc
+
+# Environment
+venv/
+
+
+# Database files
+*.db
+
+# User-Temporary files
+*.csv
