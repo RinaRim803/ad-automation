@@ -1,0 +1,49 @@
+{
+  "database": {
+    "path": "db/ad_simulation.db"
+  },
+
+  "data": {
+    "users_csv": "data/users.csv"
+  },
+
+  "accounts": {
+    "stale_threshold_days": 90,
+    "default_license": "M365_E3",
+    "valid_statuses": ["active", "inactive", "suspended"],
+    "valid_licenses": ["M365_E3", "M365_E5", "M365_F3"]
+  },
+
+  "groups": {
+    "default_groups": [
+      { "group_name": "Sales-Team",       "department": "Sales",       "description": "All Sales department members" },
+      { "group_name": "Engineering-Team", "department": "Engineering", "description": "All Engineering department members" },
+      { "group_name": "HR-Team",          "department": "HR",          "description": "All HR department members" },
+      { "group_name": "Finance-Team",     "department": "Finance",     "description": "All Finance department members" },
+      { "group_name": "IT-Team",          "department": "IT",          "description": "All IT department members" },
+      { "group_name": "Marketing-Team",   "department": "Marketing",   "description": "All Marketing department members" },
+      { "group_name": "VPN-Users",        "department": null,          "description": "Users with VPN access" },
+      { "group_name": "M365-Licensed",    "department": null,          "description": "All users with active M365 license" },
+      { "group_name": "Offboarded",       "department": null,          "description": "Deactivated / terminated accounts" }
+    ],
+    
+    "department_group_map": {
+      "Sales":       "Sales-Team",
+      "Engineering": "Engineering-Team",
+      "HR":          "HR-Team",
+      "Finance":     "Finance-Team",
+      "IT":          "IT-Team",
+      "Marketing":   "Marketing-Team"
+    }
+  },
+
+  "audit": {
+    "valid_actions": [
+      "ONBOARD",
+      "OFFBOARD",
+      "GROUP_ADD",
+      "GROUP_REMOVE",
+      "STALE_SUSPENDED"
+    ]
+  }
+}
