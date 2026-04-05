@@ -218,7 +218,7 @@ def onboard_user(user_info: dict) -> bool:
         print(f"  [+] Onboarding logged in audit_log")
 
         conn.commit()
-        print(f"\\n  Onboarding complete for {user_info['display_name']}.")
+        print(f"\n  Onboarding complete for {user_info['display_name']}.")
         return True
     except Exception as e:
         conn.rollback()
