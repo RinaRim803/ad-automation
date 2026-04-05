@@ -59,8 +59,6 @@ def validate_new_user(data: dict) -> list[str]:
     conn = get_connection()
     cursor = conn.cursor()
     cursor.execute("SELECT user_id FROM users WHERE email = ?", (email,))
-    # ?: execute 메서드는 '리스트'나 '튜플'을 원한다, (email, )는 tuple이라는 python의 데이터형식.
-    # type(("test@email.com", )) → <class 'tuple'> (요소가 하나인 튜플)
     if cursor.fetchone():
         errors.append(f"Email already exists: '{email}'")
 
@@ -70,16 +68,116 @@ def validate_new_user(data: dict) -> list[str]:
     )
     if cursor.fetchone():
         errors.append(f"user_id already exists: '{data.get('user_id')}'")
-    
+
     cursor.close()
-    conn.close()    
+    conn.close()
 
     return errors
 
 
-def onboard_user(user_info: dict):
+def create_account(user_info: dict, cursor) -> None:
+    """
+    Insert new user record into 'users' table.
+
+    Args:
+        user_info (dict): User information to insert.
+        cursor: Database cursor for executing SQL commands.
+
+    Real-world equivalent:
+    New-ADUser in PowerShell / creating a user object in Azure AD portal.
+    """
+    now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    cursor.execute(
+        """ 
+        INSERT INTO users (
+            user_id, display_name, email, department, job_title,
+            status,hire_date, manager_email, license,
+            created_at, updated_at
+            ) VALUES (?, ?, ?, ?, ?,'active', ?, ?, ?, ?, ?)
+        """,
+        (
+            user_info["user_id"],
+            user_info["display_name"],
+            user_info["email"],
+            user_info["department"],
+            user_info.get("job_title", ""),
+            user_info["hire_date"],
+            user_info.get("manager_email", ""),
+            user_info.get("license", DEFAULT_LICENSE),
+            now,
+            now,
+        ),
+    )
+
+
+#
+
+
+def assign_default_groups(user_id: str, department: str, cursor) -> list[str]:
+    """
+    Assign user to default security groups based on department.
+    Temporarily, I will assign licenses as groups for simplicity for now in MVP.
+
+    Args:
+        user_id (str): User ID to assign groups to.
+        department (str): User's department for group mapping.
+        cursor: Database cursor for executing SQL commands.
+
+    Real-world equivalent:
+    Adding a user to security groups in Active Directory / Azure AD based on their department.
+    """
+
+    groups_assigned = []
+    now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+    # Department group (e.g. Sales → Sales-Team)
+    dept_group = DEPT_GROUP_MAP.get(department)
+    groups_to_add = ["M365-Licensed"]  # Default license group
+
+    if dept_group:
+        groups_to_add.append(dept_group)
+
+    for group_name in groups_to_add:
+        cursor.execute(
+            """ 
+                INSERT INTO user_groups (user_id, group_name, added_at)
+                VALUES (?, ?, ?)
+                """,
+            (user_id, group_name, now),
+        )
+        groups_assigned.append(group_name)
+
+    return groups_assigned
+
+
+def log_onboard(user_id: str, detail: str, cursor) -> None:
+    """
+    Write an ONBOARD entry to the audit log.
+
+    Real-world equivalent:
+        Azure AD audit log / M365 compliance center provisioning record.
+        Required for SOC 2, ISO 27001 compliance.
+    """
+    cursor.execute(
+        """
+        INSERT INTO audit_log (action, target_user, detail)
+        VALUES ('ONBOARD', ?, ?)
+        """,
+        (user_id, detail),
+    )
+
+
+def onboard_user(user_info: dict) -> bool:
     """
     Onboard a new user based on provided information.
+    Full onboarding workflow:
+        1. Validate input
+        2. Create account
+        3. Assign default groups
+        4. Write audit log
+        5. Print summary 
+    Returns True on success, False on failure.
+
 
     Args:
         user_info (dict): { "user_id": "U1002", ... (same fields as users table)}
@@ -91,11 +189,47 @@ def onboard_user(user_info: dict):
     errors = validate_new_user(user_info)
     if errors:
         print(f"  [ERROR] Validation failed: {errors}")
-        return
+        for e in errors:
+            print(f"  - {e}")
+        return False
+
+    conn = get_connection()
+    cursor = conn.cursor()
+
+    try:
+        # Step 2 — Create user account in 'users' table
+        create_account(user_info, cursor)
+        print(f"  [+] Account created: {user_info['email']}")
+
+        # Step 3 — Assign to security and license group
+        groups = assign_default_groups(
+            user_info["user_id"], user_info["department"], cursor
+        )
+        print(f"  [+] Assigned to groups: {groups}")
+
+        # Step 4 — Log actions in 'audit_log' table
+        detail = (
+            f"Onboarded {user_info['display_name']} | "
+            f"Dept: {user_info['department']} | "
+            f"License: {user_info.get('license', DEFAULT_LICENSE)} | "
+            f"Groups: {', '.join(groups)}"
+        )
+        log_onboard(user_info["user_id"], detail, cursor)
+        print(f"  [+] Onboarding logged in audit_log")
+
+        conn.commit()
+        print(f"\\n  Onboarding complete for {user_info['display_name']}.")
+        return True
+    except Exception as e:
+        conn.rollback()
+        print(f"  [ERROR] Failed to onboard user: {e}")
+        return False
+    finally:
+        cursor.close()
+        conn.close()
 
 
 if __name__ == "__main__":
-    print("[Onboarding] Starting new employee onboarding process...")
 
     # Placeholder for onboarding logic:
     # 1. Create user account in 'users' table
@@ -104,17 +238,14 @@ if __name__ == "__main__":
     # 4. Log actions in 'audit_log' table
 
     test_user = {
-        "user_id": "U1002",
+        "user_id": "U1112",
         "display_name": "Jane Smith",
-        "email": "",
+        "email": "jane@test2.com",
         "department": "Sales",
         "job_title": "Sales Representative",
         "status": "active",
-        "last_login": None,
         "hire_date": datetime.now().strftime("%Y-%m-%d"),
-        "termination_date": None,
-        "manager_email": "",
+        "manager_email": "sales.manager@company.com)",
         "license": "M365_E3",
     }
     onboard_user(test_user)
-    print("[Onboarding] Onboarding complete.")
