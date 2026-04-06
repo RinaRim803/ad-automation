@@ -54,14 +54,13 @@ def suspend_account(user_id: str, cursor) -> None:
     """
     Suspend the account by updating its status to 'suspended' and log the action.
     """
-    cursor.execute(
-        """
+    now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    cursor.execute("""
         UPDATE users
-        SET status = 'suspended'        
-        WHERE user_id = ?
-    """,
-        (user_id,),
-    )
+        SET status     = 'suspended',
+            updated_at = ?
+        WHERE user_id  = ?
+    """, (now, user_id))
 
 
 def log_stale_suspension(user_id: str, detail: str, cursor) -> None:
