@@ -38,7 +38,7 @@ def detect_stale_accounts(cutoff) -> list[dict]:
         FROM users
         WHERE status     =  'active'
           AND last_login IS NOT NULL
-          AND last_login <  DATE('now', ? || ' days')       
+          AND last_login <  ?  
     """, (cutoff,))
 
     rows = [dict(row) for row in cursor.fetchall()]
