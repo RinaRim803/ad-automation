@@ -20,7 +20,7 @@ from config import cfg
 STALE_THRESHOLD_DAYS = cfg["accounts"]["stale_threshold_days"]  # default: 90
 
 
-def detect_stale_accounts() -> list[dict]:
+def detect_stale_accounts(cutoff) -> list[dict]:
     """
     Find all active accounts whose last_login exceeds the stale threshold.
 
@@ -39,7 +39,7 @@ def detect_stale_accounts() -> list[dict]:
         WHERE status     =  'active'
           AND last_login IS NOT NULL
           AND last_login <  DATE('now', ? || ' days')       
-    """, (-STALE_THRESHOLD_DAYS,))
+    """, (cutoff,))
 
     rows = [dict(row) for row in cursor.fetchall()]
     cursor.close()
@@ -63,7 +63,7 @@ def run_stale_check() -> dict:
 
 
     # Step 1 — Detect stale accounts
-    stale_accounts = detect_stale_accounts()
+    stale_accounts = detect_stale_accounts(cutoff)
     if not stale_accounts:
         print("\n  No stale accounts detected.\n")
     else:
