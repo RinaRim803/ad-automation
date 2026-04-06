@@ -71,7 +71,7 @@ def deactivate_account(user_id: str, termination_date: str, cursor) -> None:
         the account to be reactivated if termination was entered in error.
 
     """
-    
+
     now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     cursor.execute(
         """
@@ -83,9 +83,64 @@ def deactivate_account(user_id: str, termination_date: str, cursor) -> None:
         (termination_date, now, user_id),
     )
 
+
 def remove_all_groups(user_id: str, cursor) -> list[str]:
-    removed_groups = []
-    return removed_groups
+    """
+    Remove user from all security groups, then add to Offboarded group.
+    Real-world equivalent:
+        Removing a user from all Azure AD security groups and M365 licenses
+        to revoke access to all connected resources (SharePoint, Teams, VPN, etc.)
+
+    Why remove groups before adding Offboarded:
+        Access revocation must be complete before the account is marked as
+        offboarded. Leaving any group membership active would retain resource
+        access even after the account is disabled.
+
+    Returns list of groups that were removed.
+    """
+    now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+    # Fetch current group memberships before removal
+    cursor.execute(
+        """
+        SELECT group_name FROM user_groups WHERE user_id = ?
+    """,
+        (user_id,),
+    )
+    current_groups = [row["group_name"] for row in cursor.fetchall()]
+
+    # Remove all group memberships
+    cursor.execute("DELETE FROM user_groups WHERE user_id = ?", (user_id,))
+
+    # Add to Offboarded group for audit tracking
+    cursor.execute(
+        """
+        INSERT OR IGNORE INTO user_groups (user_id, group_name, added_at)
+        VALUES (?, 'Offboarded', ?)
+    """,
+        (user_id, now),
+    )
+
+    return current_groups
+
+
+def log_offboard(user_id: str, detail: str, cursor) -> None:
+    """
+    Write an audit log entry for the offboarding action.
+
+    Real-world equivalent:
+        Azure AD audit log entry for account deactivation.
+        Required for SOC 2, ISO 27001, and legal hold compliance.
+        This is critical for legal and regulatory requirements to demonstrate proper handling of departing employee accounts.
+    """
+    cursor.execute(
+        """
+        INSERT INTO audit_log (action, target_user, detail)
+        VALUES ('OFFBOARD', ?, ?)
+        """,
+        (user_id,detail,),
+    )
+
 
 def offboard_user(user_id: str, termination_date: str) -> bool:
     """
@@ -117,13 +172,27 @@ def offboard_user(user_id: str, termination_date: str) -> bool:
         # Step 2 — Deactivate account and set termination date
         deactivate_account(user_id, termination_date, cursor)
         print(f"  [-] Account deactivated: {display_name}")
-        
+
         # Step 3 — Remove from all groups and add to 'Offboarded' group
         removed_groups = remove_all_groups(user_id, cursor)
+        if removed_groups:
+            print(f"  [-] Groups removed: {', '.join(removed_groups)}")
+        else:
+            print(f"  [-] No active group memberships found.")
+        print(f"  [+] Added to: Offboarded")
 
         # Step 4 — Write audit log entry
+        detail = (
+            f"Offboarded {display_name} | "
+            f"Termination date: {termination_date or 'today'} | "
+            f"Groups removed: {', '.join(removed_groups) if removed_groups else 'none'}"
+        )
+        log_offboard(user_id, detail, cursor)
+        print(f"  [+] Audit log recorded.")
 
-
+        conn.commit()
+        print(f"\n  Offboarding complete for {display_name}.")
+        return True
 
     except Exception as e:
         conn.rollback()
@@ -136,5 +205,6 @@ def offboard_user(user_id: str, termination_date: str) -> bool:
 
 
 if __name__ == "__main__":
-
-    offboard_user("U1001", termination_date="2026-04-04")
+    # U1007 Lisa Wang — already seeded as inactive (tests duplicate guard)
+    # U1011 Jane Smith — active account (tests normal offboarding flow)
+    offboard_user("U1011", termination_date="2026-04-04")
